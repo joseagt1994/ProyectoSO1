@@ -1,0 +1,115 @@
+version: '2.2'
+
+services:
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    container_name: nginx
+    ports:
+      - "8888:80"
+    volumes:
+      - ./docker/config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./src:/var/www/html/:z
+    depends_on:
+      - php_sender
+
+  php_sender:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: php_sender
+    user: $UID
+    ports:
+      - "9000"
+    volumes:
+      - ./docker/config/php.ini:/usr/local/etc/php/php.ini
+      - ./src:/var/www/html/:z
+    depends_on:
+      - php_receiver
+      - composer
+
+  php_receiver:
+    #image: phpdockerio/php71-cli
+    build:
+      context: .
+      dockerfile: docker/php_receiver/Dockerfile
+    command: "php /app/receive.php"
+    volumes:
+      - ./src:/app
+    depends_on:
+      composer:
+        condition: service_started
+      rabbitmq1:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+    links:
+      - rabbitmq
+    scale: 5
+
+#https://stackoverflow.com/questions/31746182/docker-compose-wait-for-container-x-before-starting-y
+  rabbitmq1:
+#    image: rabbitmq
+    build:
+      context: .
+      dockerfile: docker/rabbitmq/Dockerfile
+    container_name: rabbitmq1
+    hostname: rabbitmq1
+    ports:
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:15672"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+#    volumes:
+#      - storage/rabbitmq1:/var/lib/rabbitmq
+    environment:
+      - RABBITMQ_ERLANG_COOKIE=cluster_cookie
+
+  rabbitmq2:
+#    image: rabbitmq
+    container_name: rabbitmq2
+    hostname: rabbitmq2
+    build:
+      context: .
+      dockerfile: docker/rabbitmq/Dockerfile
+    hostname: rabbitmq2
+    ports:
+      - "15673:15672"
+#    volumes:
+#      - storage/rabbitmq2:/var/lib/rabbitmq
+    environment:
+      - RABBITMQ_ERLANG_COOKIE=cluster_cookie
+
+  composer:
+    image: composer
+    container_name: composer
+    user: $UID
+    volumes:
+      - ./src:/app
+    command: composer install --ignore-platform-reqs
+
+  rabbitmq:
+    build:
+      context: .
+      dockerfile: docker/haproxy-rabbit/Dockerfile
+    container_name: haproxy-rabbit
+    hostname: haproxy-rabbit
+    depends_on:
+      - rabbitmq1
+      - rabbitmq2
+#    links:
+#      - rabbitmq1
+#      - rabbitmq2
+    ports:
+      - "5672:5672"
+      - "1936:1936"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:15672"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+
