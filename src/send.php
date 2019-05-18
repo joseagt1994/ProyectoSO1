@@ -17,7 +17,7 @@ $channel = $connection->channel();
 
 $channel->queue_declare('hello', false, true, false, false);
 
-$msg = new AMQPMessage('Hello World!',
+$msg = new AMQPMessage("{\"canal\": 1001,\"msg\":\"Random: ".rand(1,30)."\"}",
     array('delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT)
 );
 $channel->basic_publish($msg, '', 'hello');
